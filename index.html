@@ -365,17 +365,20 @@
       <input type="number" id="limit" value="100" min="10" max="9999" placeholder="0 = все">
     </div>
     <div class="control-group">
-      <label>CORS-прокси (если авто не сработал)</label>
-      <select id="proxy">
-        <option value="auto">Авто (перебор)</option>
-        <option value="https://corsproxy.io/?">corsproxy.io</option>
-        <option value="https://api.allorigins.win/raw?url=">allorigins.win</option>
-        <option value="https://api.codetabs.com/v1/proxy?quest=">codetabs.com</option>
-        <option value="https://thingproxy.freeboard.io/fetch/">thingproxy</option>
-      </select>
+      <label>Список серверов</label>
+      <div id="serversInfo" style="
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--muted);
+        line-height: 1.5;
+      ">Загрузка…</div>
     </div>
 
-    <button class="btn-run" id="btnRun" onclick="startCheck()">▶ Запустить проверку</button>
+    <button class="btn-run" id="btnRun" onclick="startCheck()" disabled>▶ Запустить проверку</button>
     <button class="btn-stop" id="btnStop" onclick="stopCheck()">■ Остановить</button>
 
     <hr class="divider">
@@ -423,12 +426,251 @@
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let allResults = [];
-let running    = false;
-let stopFlag   = false;
-let sortKey    = 'tcpMs';
-let sortAsc    = true;
-let filterMode = 'all'; // all | alive | dead
+let allResults  = [];
+let serverList  = [];   // загружается из servers.json при старте
+let running     = false;
+let stopFlag    = false;
+let sortKey     = 'tcpMs';
+let sortAsc     = true;
+let filterMode  = 'all';
+
+// ── Load servers.json on page open ────────────────────────────────────────
+async function loadServerList() {
+  const info = document.getElementById('serversInfo');
+  try {
+    const res  = await fetch('servers.json?_=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    serverList = data.servers || [];
+
+    const updated = data.updated_at
+      ? new Date(data.updated_at).toLocaleString('ru-RU', { timeZone: 'UTC', hour12: false })
+      : '?';
+
+    info.innerHTML =
+      `<span style="color:var(--accent)">${serverList.length}</span> серверов<br>` +
+      `<span style="color:var(--muted);font-size:0.68rem">обновлено: ${updated} UTC</span>`;
+
+    document.getElementById('btnRun').disabled = false;
+    document.getElementById('statTotal').textContent = serverList.length;
+  } catch (e) {
+    info.innerHTML =
+      `<span style="color:var(--dead)">Не удалось загрузить servers.json</span><br>` +
+      `<span style="font-size:0.68rem">Запустите Actions вручную на вкладке Actions в GitHub</span>`;
+    console.error('loadServerList:', e);
+  }
+}
+
+// ── TCP reachability check via fetch() ────────────────────────────────────
+async function tcpCheck(ip, port, timeoutMs) {
+  const url  = `http://${ip}:${port}/`;
+  const t0   = performance.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(timer);
+    return { ok: true, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    clearTimeout(timer);
+    const ms = Math.round(performance.now() - t0);
+    if (e.name === 'AbortError') return { ok: false, ms: -1 };
+    return { ok: true, ms };   // connection refused = host alive
+  }
+}
+
+// ── Concurrency pool ──────────────────────────────────────────────────────
+async function runPool(tasks, concurrency, onResult) {
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length && !stopFlag) {
+      const task = tasks[idx++];
+      onResult(await task());
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+}
+
+// ── Main check flow ───────────────────────────────────────────────────────
+async function startCheck() {
+  if (running || !serverList.length) return;
+  running  = true;
+  stopFlag = false;
+  allResults = [];
+
+  document.getElementById('btnRun').disabled = true;
+  document.getElementById('btnStop').style.display = 'block';
+  document.getElementById('btnExport').style.display = 'none';
+  document.getElementById('statAlive').textContent = '0';
+  document.getElementById('statDead').textContent  = '0';
+  document.getElementById('statBest').textContent  = '…';
+  setProgress(0, 0, 1);
+  showTable([]);
+
+  const limit       = parseInt(document.getElementById('limit').value) || 0;
+  const timeout     = parseInt(document.getElementById('timeout').value) || 4000;
+  const concurrency = parseInt(document.getElementById('concurrency').value) || 20;
+
+  const servers = limit > 0 ? serverList.slice(0, limit) : serverList;
+  const total   = servers.length;
+  document.getElementById('statTotal').textContent = total;
+
+  let done = 0;
+  const tasks = servers.map(srv => async () => {
+    const { ok, ms } = await tcpCheck(srv.ip, srv.port, timeout);
+    return { ...srv, tcpPort: srv.port, alive: ok, tcpMs: ms };
+  });
+
+  await runPool(tasks, concurrency, result => {
+    allResults.push(result);
+    done++;
+    const alive = allResults.filter(r => r.alive).length;
+    const best  = allResults.filter(r => r.tcpMs > 0).map(r => r.tcpMs);
+    document.getElementById('statAlive').textContent = alive;
+    document.getElementById('statDead').textContent  = done - alive;
+    document.getElementById('statBest').textContent  = best.length ? Math.min(...best) : '—';
+    setProgress(done, done, total);
+    renderTable();
+  });
+
+  finishCheck();
+}
+
+function stopCheck() { stopFlag = true; }
+
+function finishCheck() {
+  running = false;
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('btnStop').style.display = 'none';
+  if (allResults.length) document.getElementById('btnExport').style.display = 'block';
+  renderTable();
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────
+function setProgress(val, done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = total > 0 ? `${done} / ${total}` : '—';
+}
+
+function msClass(ms) {
+  if (ms < 0)   return 'na';
+  if (ms < 200) return 'ms';
+  if (ms < 600) return 'ms slow';
+  return 'ms bad';
+}
+function fmtMs(ms)    { return ms >= 0 ? `${ms} ms` : '—'; }
+function fmtSpeed(b)  {
+  const n = parseFloat(b);
+  if (isNaN(n) || n <= 0) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+' Mbps';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+' Kbps';
+  return n+' bps';
+}
+
+function getFiltered() {
+  let data = [...allResults];
+  if (filterMode === 'alive') data = data.filter(r => r.alive);
+  if (filterMode === 'dead')  data = data.filter(r => !r.alive);
+  data.sort((a, b) => {
+    let va = a[sortKey], vb = b[sortKey];
+    if (sortKey === 'tcpMs')  { va = va < 0 ? 9999 : va; vb = vb < 0 ? 9999 : vb; }
+    if (sortKey === 'speed')  { va = parseFloat(va)||0; vb = parseFloat(vb)||0; }
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ?  1 : -1;
+    return 0;
+  });
+  return data;
+}
+
+function renderTable() { showTable(getFiltered()); }
+
+function showTable(data) {
+  const wrap = document.getElementById('resultsWrap');
+  if (!data.length && !running) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">⬡</div>
+        <div>Нет данных</div>
+        <div class="empty-hint">Запустите проверку или измените фильтр.</div>
+      </div>`;
+    return;
+  }
+  const aliveCount = allResults.filter(r => r.alive).length;
+  const deadCount  = allResults.length - aliveCount;
+  const arrowFor   = k => sortKey !== k
+    ? '<span style="opacity:.3">↕</span>'
+    : (sortAsc ? '↑' : '↓');
+
+  const rows = data.map(r => `
+    <tr>
+      <td><span class="badge ${r.alive?'alive':'dead'}">${r.alive?'ALIVE':'DEAD'}</span></td>
+      <td>${r.ip}</td>
+      <td>${r.tcpPort}</td>
+      <td>${r.country}</td>
+      <td class="${msClass(r.tcpMs)}">${fmtMs(r.tcpMs)}</td>
+      <td>${fmtSpeed(r.speed)}</td>
+      <td>${r.sessions}</td>
+    </tr>`).join('');
+
+  wrap.innerHTML = `
+    <div class="results-toolbar">
+      <button class="filter-btn ${filterMode==='all'?'active':''}"   onclick="setFilter('all')">Все (${allResults.length})</button>
+      <button class="filter-btn ${filterMode==='alive'?'active':''}" onclick="setFilter('alive')">✅ Рабочие (${aliveCount})</button>
+      <button class="filter-btn dead ${filterMode==='dead'?'active':''}" onclick="setFilter('dead')">❌ Недоступные (${deadCount})</button>
+      <select class="sort-select" onchange="setSort(this.value)">
+        <option value="tcpMs"   ${sortKey==='tcpMs'?'selected':''}>Сортировка: Пинг</option>
+        <option value="country" ${sortKey==='country'?'selected':''}>Сортировка: Страна</option>
+        <option value="speed"   ${sortKey==='speed'?'selected':''}>Сортировка: Скорость</option>
+        <option value="alive"   ${sortKey==='alive'?'selected':''}>Сортировка: Статус</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th onclick="setSort('alive')">Статус ${arrowFor('alive')}</th>
+          <th onclick="setSort('ip')">IP ${arrowFor('ip')}</th>
+          <th>Порт</th>
+          <th onclick="setSort('country')">Страна ${arrowFor('country')}</th>
+          <th onclick="setSort('tcpMs')">TCP мс ${arrowFor('tcpMs')}</th>
+          <th onclick="setSort('speed')">Скорость ${arrowFor('speed')}</th>
+          <th>Сессий</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────
+function setFilter(mode) { filterMode = mode; renderTable(); }
+function setSort(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = true; }
+  renderTable();
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['alive','ip','tcpPort','country','tcpMs','speed','sessions'];
+  const rows = [...allResults]
+    .sort((a,b) => (b.alive - a.alive) || ((a.tcpMs<0?9999:a.tcpMs)-(b.tcpMs<0?9999:b.tcpMs)))
+    .map(r => headers.map(h => JSON.stringify(r[h]??'')).join(','));
+  const csv  = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `vpngate_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadServerList();
+</script>
+</body>
+</html>
+
 
 // ── Sources: tried in order until one works ───────────────────────────────
 const API_DIRECT = 'http://www.vpngate.net/api/iphone/';  // HTTP (no SSL issue)
