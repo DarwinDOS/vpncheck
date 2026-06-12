@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VPNGate Checker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #13161e;
+    --border:    #1e2330;
+    --accent:    #00e5a0;
+    --accent2:   #0077ff;
+    --dead:      #ff4455;
+    --text:      #e2e8f0;
+    --muted:     #4a5568;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--muted); }
+  .tagline {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 0;
+    height: calc(100vh - 73px);
+  }
+
+  /* ── Sidebar ── */
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+  }
+
+  .control-group label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-family: var(--mono);
+  }
+
+  input[type="number"], select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type="number"]:focus, select:focus { border-color: var(--accent); }
+
+  .btn-run {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn-run:hover { opacity: 0.88; }
+  .btn-run:active { transform: scale(0.98); }
+  .btn-run:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-stop {
+    width: 100%;
+    padding: 9px;
+    background: transparent;
+    color: var(--dead);
+    border: 1px solid var(--dead);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    cursor: pointer;
+    display: none;
+    transition: background 0.15s;
+  }
+  .btn-stop:hover { background: rgba(255,68,85,0.08); }
+
+  /* Stats bar */
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-val {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .stat-val.green { color: var(--accent); }
+  .stat-val.red   { color: var(--dead); }
+  .stat-val.blue  { color: var(--accent2); }
+  .stat-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 3px;
+  }
+
+  /* Progress bar */
+  .progress-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    width: 0%;
+    transition: width 0.2s;
+  }
+  .progress-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+    text-align: right;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Export */
+  .btn-export {
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: none;
+  }
+  .btn-export:hover { background: rgba(0,119,255,0.08); }
+
+  /* ── Results panel ── */
+  .results-wrap {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .results-toolbar {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+  .filter-btn.dead.active { background: var(--dead); border-color: var(--dead); color: #fff; }
+
+  .sort-select {
+    margin-left: auto;
+    width: auto;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  /* Table */
+  .table-wrap {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    padding: 9px 14px;
+    text-align: left;
+    color: var(--muted);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+  thead th:hover { color: var(--text); }
+  thead th.sorted { color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+  td {
+    padding: 8px 14px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .badge.alive { background: rgba(0,229,160,0.12); color: var(--accent); }
+  .badge.dead  { background: rgba(255,68,85,0.12);  color: var(--dead); }
+
+  .ms { color: var(--accent2); }
+  .ms.slow { color: #f6ad55; }
+  .ms.bad  { color: var(--dead); }
+  .na { color: var(--muted); }
+
+  /* Empty/status state */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 40px;
+    text-align: center;
+  }
+  .empty-icon { font-size: 2.5rem; opacity: 0.4; }
+  .empty-hint { font-size: 0.72rem; line-height: 1.6; max-width: 320px; }
+
+  /* Warning banner */
+  .cors-banner {
+    margin: 0 20px 0;
+    background: rgba(246,173,85,0.08);
+    border: 1px solid rgba(246,173,85,0.25);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: #f6ad55;
+    line-height: 1.5;
+    display: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 720px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+    aside { border-right: none; border-bottom: 1px solid var(--border); }
+    .results-wrap { height: 60vh; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">vpngate<span>.</span>check</div>
+  <div class="tagline">проверка серверов с вашего IP · браузер · без бэкенда</div>
+</header>
+
+<main>
+  <!-- ── Sidebar ── -->
+  <aside>
+    <div class="control-group">
+      <label>Таймаут (мс)</label>
+      <input type="number" id="timeout" value="4000" min="500" max="15000" step="500">
+    </div>
+    <div class="control-group">
+      <label>Параллельных запросов</label>
+      <input type="number" id="concurrency" value="20" min="1" max="80">
+    </div>
+    <div class="control-group">
+      <label>Лимит серверов</label>
+      <input type="number" id="limit" value="100" min="10" max="9999" placeholder="0 = все">
+    </div>
+    <div class="control-group">
+      <label>CORS-прокси</label>
+      <select id="proxy">
+        <option value="https://corsproxy.io/?">corsproxy.io</option>
+        <option value="https://api.allorigins.win/raw?url=">allorigins.win</option>
+        <option value="https://cors-anywhere.herokuapp.com/">cors-anywhere</option>
+      </select>
+    </div>
+
+    <button class="btn-run" id="btnRun" onclick="startCheck()">▶ Запустить проверку</button>
+    <button class="btn-stop" id="btnStop" onclick="stopCheck()">■ Остановить</button>
+
+    <hr class="divider">
+
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-val green" id="statAlive">0</div>
+        <div class="stat-label">Рабочих</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val red" id="statDead">0</div>
+        <div class="stat-label">Недоступных</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val blue" id="statTotal">—</div>
+        <div class="stat-label">Всего</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statBest" style="color:#f6ad55">—</div>
+        <div class="stat-label">Лучший мс</div>
+      </div>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="progress-label" id="progressLabel">—</div>
+
+    <hr class="divider">
+    <button class="btn-export" id="btnExport" onclick="exportCSV()">⬇ Скачать CSV</button>
+  </aside>
+
+  <!-- ── Results ── -->
+  <div class="results-wrap" id="resultsWrap">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">⬡</div>
+      <div>Список серверов пуст</div>
+      <div class="empty-hint">
+        Нажмите «Запустить проверку» — скрипт загрузит актуальный список с VPNGate API
+        и проверит каждый сервер напрямую с вашего IP через браузер.
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allResults = [];
+let running    = false;
+let stopFlag   = false;
+let sortKey    = 'tcpMs';
+let sortAsc    = true;
+let filterMode = 'all'; // all | alive | dead
+
+// ── Fetch servers from VPNGate API via CORS proxy ─────────────────────────
+async function fetchServers() {
+  const proxy   = document.getElementById('proxy').value;
+  const apiUrl  = 'https://www.vpngate.net/api/iphone/';
+  const url     = proxy + encodeURIComponent(apiUrl);
+
+  const res  = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const text = await res.text();
+
+  // Strip leading *vpn_servers line
+  const lines = text.split('\n').filter(l => !l.startsWith('*') && l.trim());
+  if (lines.length < 2) throw new Error('Пустой ответ от API');
+
+  const headers = lines[0].split(',');
+  const servers = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.length < 2) continue;
+    const row  = {};
+    headers.forEach((h, idx) => row[h.trim()] = (cols[idx] || '').trim());
+
+    const ip      = row['#HostName'] || row['HostName'] || row['IP'] || '';
+    const tcpRaw  = row['TCP Port']  || row['TCPPort']  || '';
+    const country = row['CountryLong'] || row['Country'] || '?';
+    const speed   = row['Speed']    || '0';
+    const sessions= row['NumVpnSessions'] || '?';
+    const pingD   = row['Ping']     || '?';
+
+    const tcpPort = tcpRaw.split(',').map(p => parseInt(p.trim())).find(p => p > 0) || 443;
+
+    if (ip) servers.push({ ip, tcpPort, country, speed, sessions, pingDeclared: pingD });
+  }
+  return servers;
+}
+
+// Proper CSV line splitter (handles quoted commas)
+function splitCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (const ch of line) {
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  result.push(cur);
+  return result;
+}
+
+// ── TCP reachability check via fetch() ────────────────────────────────────
+// Browsers can't do raw TCP, but fetch to http://IP:PORT will:
+//   - resolve quickly (connection refused / network error) if port is closed → fast fail
+//   - hang until timeout if host is silently dropping packets
+//   - occasionally succeed (200 or non-200) if something responds
+// We treat "responded within timeout (even with error)" as ALIVE.
+async function tcpCheck(ip, port, timeoutMs) {
+  const url = `http://${ip}:${port}/`;
+  const t0  = performance.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    await fetch(url, {
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    return { ok: true, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    clearTimeout(timer);
+    const ms = Math.round(performance.now() - t0);
+    // AbortError = timeout = truly unreachable
+    if (e.name === 'AbortError') return { ok: false, ms: -1 };
+    // Any other network error (TypeError, connection refused) means host responded → alive
+    return { ok: true, ms };
+  }
+}
+
+// ── Run queue with concurrency limit ──────────────────────────────────────
+async function runPool(tasks, concurrency, onResult) {
+  let idx = 0;
+
+  async function worker() {
+    while (idx < tasks.length && !stopFlag) {
+      const task = tasks[idx++];
+      const result = await task();
+      onResult(result);
+    }
+  }
+
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+}
+
+// ── Main check flow ────────────────────────────────────────────────────────
+async function startCheck() {
+  if (running) return;
+  running  = true;
+  stopFlag = false;
+  allResults = [];
+
+  document.getElementById('btnRun').disabled = true;
+  document.getElementById('btnStop').style.display = 'block';
+  document.getElementById('btnExport').style.display = 'none';
+  document.getElementById('statAlive').textContent = '0';
+  document.getElementById('statDead').textContent  = '0';
+  document.getElementById('statTotal').textContent  = '…';
+  document.getElementById('statBest').textContent   = '…';
+  setProgress(0, 0, 1);
+  showTable([]);
+
+  let servers;
+  try {
+    servers = await fetchServers();
+  } catch (e) {
+    showError(`Не удалось загрузить список серверов: ${e.message}`);
+    finishCheck();
+    return;
+  }
+
+  const limit = parseInt(document.getElementById('limit').value) || 0;
+  if (limit > 0) servers = servers.slice(0, limit);
+
+  const total       = servers.length;
+  const timeout     = parseInt(document.getElementById('timeout').value) || 4000;
+  const concurrency = parseInt(document.getElementById('concurrency').value) || 20;
+
+  document.getElementById('statTotal').textContent = total;
+  let done = 0;
+
+  const tasks = servers.map(srv => async () => {
+    const { ok, ms } = await tcpCheck(srv.ip, srv.tcpPort, timeout);
+    return { ...srv, alive: ok, tcpMs: ms };
+  });
+
+  await runPool(tasks, concurrency, result => {
+    allResults.push(result);
+    done++;
+
+    const alive = allResults.filter(r => r.alive).length;
+    const dead  = done - alive;
+    const best  = allResults.filter(r => r.tcpMs > 0).map(r => r.tcpMs);
+
+    document.getElementById('statAlive').textContent = alive;
+    document.getElementById('statDead').textContent  = dead;
+    document.getElementById('statBest').textContent  = best.length ? Math.min(...best) : '—';
+    setProgress(done, done, total);
+    renderTable();
+  });
+
+  finishCheck();
+}
+
+function stopCheck() {
+  stopFlag = true;
+}
+
+function finishCheck() {
+  running = false;
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('btnStop').style.display = 'none';
+  if (allResults.length) document.getElementById('btnExport').style.display = 'block';
+  renderTable();
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────
+function setProgress(val, done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = total > 0 ? `${done} / ${total}` : '—';
+}
+
+function msClass(ms) {
+  if (ms < 0)    return 'na';
+  if (ms < 200)  return 'ms';
+  if (ms < 600)  return 'ms slow';
+  return 'ms bad';
+}
+
+function fmtMs(ms) {
+  return ms >= 0 ? `${ms} ms` : '—';
+}
+
+function fmtSpeed(bps) {
+  const n = parseFloat(bps);
+  if (isNaN(n) || n <= 0) return '—';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' Mbps';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + ' Kbps';
+  return n + ' bps';
+}
+
+function getFiltered() {
+  let data = [...allResults];
+  if (filterMode === 'alive') data = data.filter(r => r.alive);
+  if (filterMode === 'dead')  data = data.filter(r => !r.alive);
+
+  data.sort((a, b) => {
+    let va = a[sortKey], vb = b[sortKey];
+    if (sortKey === 'tcpMs') { va = va < 0 ? 9999 : va; vb = vb < 0 ? 9999 : vb; }
+    if (sortKey === 'speed') { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+  return data;
+}
+
+function renderTable() {
+  const data = getFiltered();
+  showTable(data);
+}
+
+function showTable(data) {
+  const wrap = document.getElementById('resultsWrap');
+
+  if (!data.length && !running) {
+    wrap.innerHTML = `
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">⬡</div>
+        <div>Нет данных</div>
+        <div class="empty-hint">Запустите проверку или измените фильтр.</div>
+      </div>`;
+    return;
+  }
+
+  const aliveCount = allResults.filter(r => r.alive).length;
+  const deadCount  = allResults.length - aliveCount;
+
+  const arrowFor = key => {
+    if (sortKey !== key) return '<span style="opacity:.3">↕</span>';
+    return sortAsc ? '↑' : '↓';
+  };
+
+  const rows = data.map(r => `
+    <tr>
+      <td><span class="badge ${r.alive ? 'alive' : 'dead'}">${r.alive ? 'ALIVE' : 'DEAD'}</span></td>
+      <td>${r.ip}</td>
+      <td>${r.tcpPort}</td>
+      <td>${r.country}</td>
+      <td class="${msClass(r.tcpMs)}">${fmtMs(r.tcpMs)}</td>
+      <td>${fmtSpeed(r.speed)}</td>
+      <td>${r.sessions}</td>
+    </tr>`).join('');
+
+  wrap.innerHTML = `
+    <div class="results-toolbar">
+      <button class="filter-btn ${filterMode==='all'?'active':''}" onclick="setFilter('all')">Все (${allResults.length})</button>
+      <button class="filter-btn ${filterMode==='alive'?'active':''}" onclick="setFilter('alive')">✅ Рабочие (${aliveCount})</button>
+      <button class="filter-btn dead ${filterMode==='dead'?'active':''}" onclick="setFilter('dead')">❌ Недоступные (${deadCount})</button>
+      <select class="sort-select" onchange="setSort(this.value)">
+        <option value="tcpMs"   ${sortKey==='tcpMs'?'selected':''}>Сортировка: Пинг</option>
+        <option value="country" ${sortKey==='country'?'selected':''}>Сортировка: Страна</option>
+        <option value="speed"   ${sortKey==='speed'?'selected':''}>Сортировка: Скорость</option>
+        <option value="alive"   ${sortKey==='alive'?'selected':''}>Сортировка: Статус</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="setSort('alive')">Статус ${arrowFor('alive')}</th>
+            <th onclick="setSort('ip')">IP ${arrowFor('ip')}</th>
+            <th>Порт</th>
+            <th onclick="setSort('country')">Страна ${arrowFor('country')}</th>
+            <th onclick="setSort('tcpMs')">TCP мс ${arrowFor('tcpMs')}</th>
+            <th onclick="setSort('speed')">Скорость ${arrowFor('speed')}</th>
+            <th>Сессий</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function showError(msg) {
+  const wrap = document.getElementById('resultsWrap');
+  wrap.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">⚠</div>
+      <div style="color:#f6ad55">${msg}</div>
+      <div class="empty-hint">
+        Попробуйте выбрать другой CORS-прокси в настройках или подождите немного.
+        <br><br>
+        Некоторые прокси имеют лимиты запросов — если один не работает, попробуйте другой.
+      </div>
+    </div>`;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────
+function setFilter(mode) {
+  filterMode = mode;
+  renderTable();
+}
+
+function setSort(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = true; }
+  renderTable();
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['alive','ip','tcpPort','country','tcpMs','speed','sessions'];
+  const rows = allResults
+    .sort((a,b) => (b.alive - a.alive) || ((a.tcpMs < 0 ? 9999 : a.tcpMs) - (b.tcpMs < 0 ? 9999 : b.tcpMs)))
+    .map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(','));
+
+  const csv  = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `vpngate_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
