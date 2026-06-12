@@ -365,11 +365,13 @@
       <input type="number" id="limit" value="100" min="10" max="9999" placeholder="0 = все">
     </div>
     <div class="control-group">
-      <label>CORS-прокси</label>
+      <label>CORS-прокси (если авто не сработал)</label>
       <select id="proxy">
+        <option value="auto">Авто (перебор)</option>
         <option value="https://corsproxy.io/?">corsproxy.io</option>
         <option value="https://api.allorigins.win/raw?url=">allorigins.win</option>
-        <option value="https://cors-anywhere.herokuapp.com/">cors-anywhere</option>
+        <option value="https://api.codetabs.com/v1/proxy?quest=">codetabs.com</option>
+        <option value="https://thingproxy.freeboard.io/fetch/">thingproxy</option>
       </select>
     </div>
 
@@ -428,16 +430,73 @@ let sortKey    = 'tcpMs';
 let sortAsc    = true;
 let filterMode = 'all'; // all | alive | dead
 
-// ── Fetch servers from VPNGate API via CORS proxy ─────────────────────────
-async function fetchServers() {
-  const proxy   = document.getElementById('proxy').value;
-  const apiUrl  = 'https://www.vpngate.net/api/iphone/';
-  const url     = proxy + encodeURIComponent(apiUrl);
+// ── Sources: tried in order until one works ───────────────────────────────
+const API_DIRECT = 'http://www.vpngate.net/api/iphone/';  // HTTP (no SSL issue)
 
-  const res  = await fetch(url, { signal: AbortSignal.timeout(20000) });
+const CORS_PROXIES = [
+  'https://corsproxy.io/?',
+  'https://api.allorigins.win/raw?url=',
+  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://thingproxy.freeboard.io/fetch/',
+];
+
+function buildProxyUrl(proxy, targetUrl) {
+  // allorigins and codetabs need encoded URL; others don't
+  if (proxy.includes('allorigins') || proxy.includes('codetabs')) {
+    return proxy + encodeURIComponent(targetUrl);
+  }
+  return proxy + encodeURIComponent(targetUrl);
+}
+
+async function tryFetch(url, timeoutMs = 12000) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   const text = await res.text();
+  if (text.includes('#HostName') || text.includes('*vpn_servers')) return text;
+  throw new Error('Неожиданный ответ');
+}
 
-  // Strip leading *vpn_servers line
+async function fetchServers() {
+  const manualProxy = document.getElementById('proxy').value;
+  const proxyList   = manualProxy === 'auto' ? CORS_PROXIES : [manualProxy];
+
+  // Try each proxy with HTTP target (avoids SSL handshake timeout)
+  for (const proxy of proxyList) {
+    const url = buildProxyUrl(proxy, API_DIRECT);
+    try {
+      setStatus(`Пробую прокси: ${proxy.split('/')[2]}…`);
+      const text = await tryFetch(url);
+      setStatus('');
+      return parseCSV(text);
+    } catch (e) {
+      console.warn(`[proxy fail] ${proxy}:`, e.message);
+    }
+  }
+
+  // Last resort: try HTTPS target through proxies
+  const HTTPS_TARGET = 'https://www.vpngate.net/api/iphone/';
+  for (const proxy of proxyList) {
+    const url = buildProxyUrl(proxy, HTTPS_TARGET);
+    try {
+      setStatus(`Пробую HTTPS через ${proxy.split('/')[2]}…`);
+      const text = await tryFetch(url);
+      setStatus('');
+      return parseCSV(text);
+    } catch (e) {
+      console.warn(`[proxy https fail] ${proxy}:`, e.message);
+    }
+  }
+
+  throw new Error(
+    'Все прокси недоступны. Попробуйте включить VPN или открыть страницу позже — ' +
+    'публичные CORS-прокси иногда временно перегружены.'
+  );
+}
+
+function setStatus(msg) {
+  document.getElementById('progressLabel').textContent = msg || '—';
+}
+
+function parseCSV(text) {
   const lines = text.split('\n').filter(l => !l.startsWith('*') && l.trim());
   if (lines.length < 2) throw new Error('Пустой ответ от API');
 
@@ -447,7 +506,7 @@ async function fetchServers() {
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
     if (cols.length < 2) continue;
-    const row  = {};
+    const row = {};
     headers.forEach((h, idx) => row[h.trim()] = (cols[idx] || '').trim());
 
     const ip      = row['#HostName'] || row['HostName'] || row['IP'] || '';
@@ -458,13 +517,12 @@ async function fetchServers() {
     const pingD   = row['Ping']     || '?';
 
     const tcpPort = tcpRaw.split(',').map(p => parseInt(p.trim())).find(p => p > 0) || 443;
-
     if (ip) servers.push({ ip, tcpPort, country, speed, sessions, pingDeclared: pingD });
   }
   return servers;
 }
 
-// Proper CSV line splitter (handles quoted commas)
+
 function splitCSVLine(line) {
   const result = [];
   let cur = '', inQ = false;
