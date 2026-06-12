@@ -454,14 +454,34 @@ async function loadServerList() {
     document.getElementById('btnRun').disabled = false;
     document.getElementById('statTotal').textContent = serverList.length;
   } catch (e) {
-    info.innerHTML =
+    info.textContent = '';
+    info.insertAdjacentHTML('beforeend',
       `<span style="color:var(--dead)">Не удалось загрузить servers.json</span><br>` +
-      `<span style="font-size:0.68rem">Запустите Actions вручную на вкладке Actions в GitHub</span>`;
+      `<span style="font-size:0.68rem">Запустите Actions вручную на вкладке Actions в GitHub</span>`
+    );
+    // Показываем подсказку в области результатов
+    document.getElementById('resultsWrap').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">⚠</div>
+        <div style="color:var(--dead)">servers.json не найден</div>
+        <div class="empty-hint">
+          Перейдите в репозиторий → вкладка <b>Actions</b> →
+          <b>Update VPNGate Server List</b> → <b>Run workflow</b>.<br><br>
+          После успешного запуска обновите эту страницу.
+        </div>
+      </div>`;
     console.error('loadServerList:', e);
   }
 }
 
 // ── TCP reachability check via fetch() ────────────────────────────────────
+// Браузер не даёт различить "connection refused" и "network error" напрямую —
+// оба приходят как TypeError. Но есть важное отличие по времени:
+//   • Хост ЖИВОЙ   → соединение устанавливается быстро, потом CORS-ошибка
+//   • Хост МЁРТВЫЙ → пакеты дропаются, ждём до таймаута (секунды)
+// Поэтому: если TypeError пришёл быстро (< FAST_MS) → ALIVE, иначе → DEAD.
+const FAST_MS = 2500;
+
 async function tcpCheck(ip, port, timeoutMs) {
   const url  = `http://${ip}:${port}/`;
   const t0   = performance.now();
@@ -475,7 +495,9 @@ async function tcpCheck(ip, port, timeoutMs) {
     clearTimeout(timer);
     const ms = Math.round(performance.now() - t0);
     if (e.name === 'AbortError') return { ok: false, ms: -1 };
-    return { ok: true, ms };   // connection refused = host alive
+    // Быстрый TypeError = connection refused = хост живой
+    // Медленный TypeError = дроп пакетов = мёртвый
+    return { ok: ms < FAST_MS, ms: ms < FAST_MS ? ms : -1 };
   }
 }
 
