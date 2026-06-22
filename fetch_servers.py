@@ -38,22 +38,9 @@ def parse(raw: str) -> list[dict]:
 
     reader = csv.DictReader(io.StringIO("\n".join(lines)))
     servers = []
-    for row in reader:
-
-    ip = (
-        row.get("IP")
-        or row.get("IP Address")
-        or ""
-    )
-
+    for row in reader: ip = (row.get("IP") or row.get("IP Address")or "")
     ip = ip.strip()
-
-
-    tcp_raw = (
-        row.get("TCP Port")
-        or row.get("TCPPort")
-        or ""
-    ).strip()
+    tcp_raw = (row.get("TCP Port")or row.get("TCPPort") or "").strip()
 
 
     tcp_port = next(
@@ -108,7 +95,6 @@ def parse(raw: str) -> list[dict]:
             "ping": ping,
 
         })
-            })
     return servers
 
 
