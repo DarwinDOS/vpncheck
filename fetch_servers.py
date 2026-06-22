@@ -39,25 +39,75 @@ def parse(raw: str) -> list[dict]:
     reader = csv.DictReader(io.StringIO("\n".join(lines)))
     servers = []
     for row in reader:
-        ip      = row.get("IP") or row.get("IP Adress") or "")
-        ip      = ip.strip()
-        tcp_raw = (row.get("TCP Port") or row.get("TCPPort") or "").strip()
-        tcp_port = next(
-            (int(p.strip()) for p in tcp_raw.split(",") if p.strip().isdigit()), 443
-        )
-        country  = (row.get("CountryLong") or row.get("Country") or "?").strip()
-        speed    = (row.get("Speed")    or "0").strip()
-        sessions = (row.get("NumVpnSessions") or "?").strip()
-        ping     = (row.get("Ping")     or "?").strip()
 
-        if ip:
-            servers.append({
-                "ip":       ip,
-                "port":     tcp_port,
-                "country":  country,
-                "speed":    speed,
-                "sessions": sessions,
-                "ping":     ping,
+    ip = (
+        row.get("IP")
+        or row.get("IP Address")
+        or ""
+    )
+
+    ip = ip.strip()
+
+
+    tcp_raw = (
+        row.get("TCP Port")
+        or row.get("TCPPort")
+        or ""
+    ).strip()
+
+
+    tcp_port = next(
+        (
+            int(p.strip())
+            for p in tcp_raw.split(",")
+            if p.strip().isdigit()
+        ),
+        443
+    )
+
+
+    country = (
+        row.get("CountryLong")
+        or row.get("Country")
+        or "?"
+    ).strip()
+
+
+    speed = (
+        row.get("Speed")
+        or "0"
+    ).strip()
+
+
+    sessions = (
+        row.get("NumVpnSessions")
+        or "?"
+    ).strip()
+
+
+    ping = (
+        row.get("Ping")
+        or "?"
+    ).strip()
+
+
+    if ip:
+
+        servers.append({
+
+            "ip": ip,
+
+            "port": tcp_port,
+
+            "country": country,
+
+            "speed": speed,
+
+            "sessions": sessions,
+
+            "ping": ping,
+
+        })
             })
     return servers
 
