@@ -23,86 +23,88 @@ SSL_NO_VERIFY.check_hostname = False
 SSL_NO_VERIFY.verify_mode    = ssl.CERT_NONE
 
 
-def fetch_raw(url: str) -> str:
-    headers = {"User-Agent": "Mozilla/5.0"}
-    req = urllib.request.Request(url, headers=headers)
-    ctx = SSL_NO_VERIFY if url.startswith("https") else None
-    with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
-        return r.read().decode("utf-8", errors="replace")
-
-
 def parse(raw: str) -> list[dict]:
-    lines = [l for l in raw.splitlines() if not l.startswith("*") and l.strip()]
+    lines = [
+        l for l in raw.splitlines()
+        if not l.startswith("*") and l.strip()
+    ]
+
     if len(lines) < 2:
         raise ValueError("Пустой ответ")
 
-    reader = csv.DictReader(io.StringIO("\n".join(lines)))
-    servers = []
-    for row in reader:
-
-    ip = row.get("IP") or row.get("IP Address") or ""
-
-    ip = ip.strip()
-
-    tcp_raw = (
-        row.get("TCP Port")
-        or row.get("TCPPort")
-        or ""
-    ).strip()
-
-    tcp_port = next(
-        (
-            int(p.strip())
-            for p in tcp_raw.split(",")
-            if p.strip().isdigit()
-        ),
-        443
+    reader = csv.DictReader(
+        io.StringIO("\n".join(lines))
     )
 
-    country = (
-        row.get("CountryLong")
-        or row.get("Country")
-        or "?"
-    ).strip()
+    servers = []
+
+    for row in reader:
+
+        ip = (
+            row.get("IP")
+            or row.get("IP Address")
+            or ""
+        ).strip()
 
 
-    speed = (
-        row.get("Speed")
-        or "0"
-    ).strip()
+        tcp_raw = (
+            row.get("TCP Port")
+            or row.get("TCPPort")
+            or ""
+        ).strip()
 
 
-    sessions = (
-        row.get("NumVpnSessions")
-        or "?"
-    ).strip()
+        tcp_port = next(
+            (
+                int(p.strip())
+                for p in tcp_raw.split(",")
+                if p.strip().isdigit()
+            ),
+            443
+        )
 
 
-    ping = (
-        row.get("Ping")
-        or "?"
-    ).strip()
+        country = (
+            row.get("CountryLong")
+            or row.get("Country")
+            or "?"
+        ).strip()
 
 
-    if ip:
+        speed = (
+            row.get("Speed")
+            or "0"
+        ).strip()
 
-        servers.append({
 
-            "ip": ip,
+        sessions = (
+            row.get("NumVpnSessions")
+            or "?"
+        ).strip()
 
-            "port": tcp_port,
 
-            "country": country,
+        ping = (
+            row.get("Ping")
+            or "?"
+        ).strip()
 
-            "speed": speed,
 
-            "sessions": sessions,
 
-            "ping": ping,
+        if ip:
 
-        })
+            servers.append(
+                {
+                    "ip": ip,
+                    "port": tcp_port,
+                    "country": country,
+                    "speed": speed,
+                    "sessions": sessions,
+                    "ping": ping,
+                }
+            )
+
+
     return servers
-
 
 def main():
     servers = None
