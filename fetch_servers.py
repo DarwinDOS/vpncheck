@@ -39,7 +39,6 @@ def parse(raw: str) -> list[dict]:
     reader = csv.DictReader(io.StringIO("\n".join(lines)))
     servers = []
     for row in reader:
-for row in reader:
 
     ip = row.get("IP") or row.get("IP Address") or ""
 
